@@ -1,0 +1,22 @@
+# Teste 1A - cliente da calculadora via c_channel
+# Permite localhost ou o IP de outro computador na mesma rede.
+# Operacoes: 1=soma, 2=subtracao, 3=multiplicacao, 4=divisao.
+seq {
+    string servidor_ip = input_text("IP do servidor (ex.: 127.0.0.1): ");
+    var calculadora = c_channel(servidor_ip, 5055);
+
+    print("=== CALCULADORA MINIPAR ===");
+    print("1 - Soma (+)");
+    print("2 - Subtracao (-)");
+    print("3 - Multiplicacao (*)");
+    print("4 - Divisao (/)");
+
+    int operacao = input("Escolha a operacao (1-4): ");
+    number valor1 = input("Digite o primeiro valor: ");
+    number valor2 = input("Digite o segundo valor: ");
+
+    print("Cliente: enviando operacao=", operacao, ", valor1=", valor1, ", valor2=", valor2);
+    send(calculadora, operacao, valor1, valor2);
+    string resultado = receive(calculadora);
+    print("Resultado recebido do servidor: ", resultado);
+}

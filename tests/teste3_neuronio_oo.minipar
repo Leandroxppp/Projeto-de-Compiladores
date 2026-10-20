@@ -1,0 +1,54 @@
+# Teste 3 - Neuronio com treinamento iterativo usando classes e objetos
+# Baseado no programa de teste fornecido pelo professor.
+
+class Neuronio {
+    number input_val = 1;
+    number output_desejado = 0;
+    number peso = 0.5;
+    number bias = 1;
+    number peso_bias = 0.5;
+    number taxa_aprendizado = 0.01;
+    number erro = 999;
+    number iteracao = 0;
+
+    func ativacao(soma) {
+        if (soma >= 0) {
+            return 1;
+        } else {
+            return 0;
+        }
+    }
+
+    func treinar() {
+        print("Entrada: ", this.input_val, " | Saida desejada: ", this.output_desejado);
+
+        while (this.erro != 0) {
+            this.iteracao = this.iteracao + 1;
+            print("#### Iteracao: ", this.iteracao);
+            print("Peso: ", this.peso);
+
+            number soma = (this.input_val * this.peso) + (this.bias * this.peso_bias);
+            number saida = this.ativacao(soma);
+            print("Saida: ", saida);
+
+            this.erro = this.output_desejado - saida;
+            print("Erro: ", this.erro);
+
+            if (this.erro != 0) {
+                this.peso = this.peso + (this.taxa_aprendizado * this.input_val * this.erro);
+                print("Peso do bias: ", this.peso_bias);
+                this.peso_bias = this.peso_bias + (this.taxa_aprendizado * this.bias * this.erro);
+            }
+        }
+
+        print("Parabens! O neuronio aprendeu.");
+        print("Valor desejado: ", this.output_desejado);
+        return this.iteracao;
+    }
+}
+
+seq {
+    var neuronio = new Neuronio();
+    number total_iteracoes = neuronio.treinar();
+    print("Treinamento concluido em ", total_iteracoes, " iteracoes.");
+}

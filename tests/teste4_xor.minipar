@@ -1,0 +1,108 @@
+# Teste 4 - Rede Neural para aprender XOR
+# 3 neuronios na camada oculta + 1 neuronio de saida.
+# Feedforward, sigmoide e backpropagation sem bibliotecas externas da MiniPar.
+
+class Neuronio {
+    number peso1 = 0.1;
+    number peso2 = -0.2;
+    number peso3 = 0.3;
+    number bias = 0.0;
+    number saida = 0.0;
+
+    func feedforward2(x1, x2) {
+        var soma = x1 * this.peso1 + x2 * this.peso2 + this.bias;
+        this.saida = 1 / (1 + exp(-soma));
+        return this.saida;
+    }
+
+    func feedforward3(x1, x2, x3) {
+        var soma = x1 * this.peso1 + x2 * this.peso2 + x3 * this.peso3 + this.bias;
+        this.saida = 1 / (1 + exp(-soma));
+        return this.saida;
+    }
+
+    func derivada() {
+        return this.saida * (1 - this.saida);
+    }
+}
+
+class RedeNeural {
+    number taxa = 0.2;
+    var h1 = new Neuronio();
+    var h2 = new Neuronio();
+    var h3 = new Neuronio();
+    var saida = new Neuronio();
+
+    func configurar() {
+        # Pesos iniciais distintos evitam simetria entre os neuronios ocultos.
+        this.h1.peso1 = 0.15; this.h1.peso2 = -0.35; this.h1.bias = 0.10;
+        this.h2.peso1 = -0.25; this.h2.peso2 = 0.40; this.h2.bias = -0.10;
+        this.h3.peso1 = 0.45; this.h3.peso2 = 0.20; this.h3.bias = 0.05;
+        this.saida.peso1 = 0.30; this.saida.peso2 = -0.45; this.saida.peso3 = 0.25; this.saida.bias = 0.0;
+        return 0;
+    }
+
+    func passo(x1, x2, desejado) {
+        var s1 = this.h1.feedforward2(x1, x2);
+        var s2 = this.h2.feedforward2(x1, x2);
+        var s3 = this.h3.feedforward2(x1, x2);
+        var sf = this.saida.feedforward3(s1, s2, s3);
+
+        var erro = desejado - sf;
+        var delta_saida = erro * this.saida.derivada();
+        var delta_h1 = delta_saida * this.saida.peso1 * this.h1.derivada();
+        var delta_h2 = delta_saida * this.saida.peso2 * this.h2.derivada();
+        var delta_h3 = delta_saida * this.saida.peso3 * this.h3.derivada();
+
+        this.saida.peso1 = this.saida.peso1 + s1 * delta_saida * this.taxa;
+        this.saida.peso2 = this.saida.peso2 + s2 * delta_saida * this.taxa;
+        this.saida.peso3 = this.saida.peso3 + s3 * delta_saida * this.taxa;
+        this.saida.bias = this.saida.bias + delta_saida * this.taxa;
+
+        this.h1.peso1 = this.h1.peso1 + x1 * delta_h1 * this.taxa;
+        this.h1.peso2 = this.h1.peso2 + x2 * delta_h1 * this.taxa;
+        this.h1.bias = this.h1.bias + delta_h1 * this.taxa;
+
+        this.h2.peso1 = this.h2.peso1 + x1 * delta_h2 * this.taxa;
+        this.h2.peso2 = this.h2.peso2 + x2 * delta_h2 * this.taxa;
+        this.h2.bias = this.h2.bias + delta_h2 * this.taxa;
+
+        this.h3.peso1 = this.h3.peso1 + x1 * delta_h3 * this.taxa;
+        this.h3.peso2 = this.h3.peso2 + x2 * delta_h3 * this.taxa;
+        this.h3.bias = this.h3.bias + delta_h3 * this.taxa;
+        return erro;
+    }
+
+    func treinar() {
+        this.configurar();
+        int epoca = 0;
+        for (epoca = 0; epoca < 20000; epoca = epoca + 1) {
+            this.passo(0, 0, 0);
+            this.passo(0, 1, 1);
+            this.passo(1, 0, 1);
+            this.passo(1, 1, 0);
+        }
+        return 0;
+    }
+
+    func prever(x1, x2) {
+        var s1 = this.h1.feedforward2(x1, x2);
+        var s2 = this.h2.feedforward2(x1, x2);
+        var s3 = this.h3.feedforward2(x1, x2);
+        return this.saida.feedforward3(s1, s2, s3);
+    }
+
+    func testar() {
+        print("Input: [0, 0], Predicted Output: ", this.prever(0, 0));
+        print("Input: [0, 1], Predicted Output: ", this.prever(0, 1));
+        print("Input: [1, 0], Predicted Output: ", this.prever(1, 0));
+        print("Input: [1, 1], Predicted Output: ", this.prever(1, 1));
+        return 0;
+    }
+}
+
+seq {
+    var rede = new RedeNeural();
+    rede.treinar();
+    rede.testar();
+}

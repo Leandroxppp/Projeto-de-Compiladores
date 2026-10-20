@@ -1,0 +1,63 @@
+# Teste 6 - Quicksort recursivo orientado a objetos
+# Implementa classe Quicksort e classe InterfaceOrdenacao.
+# A entrada segue o exemplo do professor: numeros separados por espaco.
+
+class Quicksort {
+    list array = [];
+
+    func particionar(inicio, fim) {
+        number pivot = this.array[fim];
+        int i = inicio - 1;
+        int j = inicio;
+        number temp = 0;
+
+        for (j = inicio; j < fim; j = j + 1) {
+            if (this.array[j] <= pivot) {
+                i = i + 1;
+                temp = this.array[i];
+                this.array[i] = this.array[j];
+                this.array[j] = temp;
+            }
+        }
+
+        i = i + 1;
+        temp = this.array[i];
+        this.array[i] = this.array[fim];
+        this.array[fim] = temp;
+        return i;
+    }
+
+    func _quicksort(inicio, fim) {
+        if (inicio < fim) {
+            number pivo = this.particionar(inicio, fim);
+            this._quicksort(inicio, pivo - 1);
+            this._quicksort(pivo + 1, fim);
+        }
+        return 0;
+    }
+
+    func ordenar() {
+        this._quicksort(0, len(this.array) - 1);
+        return 0;
+    }
+}
+
+class InterfaceOrdenacao {
+    func iniciar() {
+        print("==== Ordenacao com Quicksort ====");
+        list valores = input_list("Insira os elementos do vetor separados por espaco:\n");
+        print("Vetor original: ", format_list(valores));
+
+        var algoritmo = new Quicksort();
+        algoritmo.array = valores;
+        algoritmo.ordenar();
+
+        print("Vetor ordenado: ", format_list(algoritmo.array));
+        return 0;
+    }
+}
+
+seq {
+    var interface = new InterfaceOrdenacao();
+    interface.iniciar();
+}

@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>MiniPar Dev</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header class="top"><div class="brand">MiniPar <span>Dev</span></div><nav class="nav"><a href="/">Início</a><a href="/learn">Modo Didático</a></nav></header>
+<main class="shell"><div class="grid">
+<section class="panel">
+  <h2>Código MiniPar</h2>
+  <div class="test-picker">
+    <label for="testSelect">Testes do professor</label>
+    <div class="test-picker-row">
+      <select id="testSelect" class="select"><option value="">— escrever manualmente —</option>{% for t in tests %}<option value="{{ t.file }}">{{ t.label }}</option>{% endfor %}</select>
+      <button class="btn" onclick="loadSelectedTest()">Carregar teste</button>
+    </div>
+    <small id="testHint">Selecione um teste para carregar o arquivo .minipar.</small>
+  </div>
+  <textarea id="code" class="editor">{{example}}</textarea>
+  <div class="toolbar"><button class="btn primary" onclick="compileAll()">Compilar</button><button class="btn" onclick="runBin()">Executar</button><a id="download" class="btn" style="display:none">Baixar executável</a></div>
+</section>
+<section class="panel"><div class="tabs"><button class="tab active" onclick="show('tokens',this)">Tokens</button><button class="tab" onclick="show('ast',this)">AST JSON</button><button class="tab" onclick="show('sem',this)">Semântico</button><button class="tab" onclick="show('tac',this)">TAC</button><button class="tab" onclick="show('cpp',this)">C++</button><button class="tab" onclick="show('run',this)">Saída</button></div><pre id="out" class="output">Compile para visualizar a pipeline.</pre><div id="status" class="status">Pronto.</div></section>
+</div></main>
+<script>
+let R={},id='';
+const code=document.getElementById('code'), out=document.getElementById('out'), status=document.getElementById('status'), download=document.getElementById('download'), testSelect=document.getElementById('testSelect'), testHint=document.getElementById('testHint');
+async function loadSelectedTest(){const file=testSelect.value;if(!file){testHint.textContent='Modo de edição manual.';return}const q=await fetch('/api/tests/'+encodeURIComponent(file));const x=await q.json();if(!x.ok){status.textContent='Falha: '+x.error;status.className='status bad';return}code.value=x.code;id='';R={};download.style.display='none';out.textContent='Teste carregado: '+x.label+'\nClique em Compilar.';testHint.textContent='Carregado: '+x.label;status.textContent='✓ Teste carregado.';status.className='status ok'}
+testSelect.addEventListener('change',loadSelectedTest);
+function text(k){if(k==='tokens')return JSON.stringify(R.tokens||[],null,2);if(k==='ast')return JSON.stringify(R.ast||{},null,2);if(k==='sem')return (R.semantic_errors||[]).join('\n')||'✓ Nenhum erro semântico';if(k==='tac')return R.tac||'';if(k==='cpp')return R.cpp||'';if(k==='run')return R.run||'';return''}
+function show(k,b){document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));b.classList.add('active');out.textContent=text(k)}
+async function compileAll(){status.textContent='Compilando...';status.className='status';let q=await fetch('/api/compile',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code:code.value})});R=await q.json();id=R.id||'';out.textContent=R.cpp||R.error||'';status.textContent=R.ok?'✓ Compilação concluída':'Falha: '+(R.error||(R.semantic_errors||[]).join('; '));status.className='status '+(R.ok?'ok':'bad');if(R.download){download.href=R.download;download.style.display='inline-block'}}
+async function runBin(){if(!id){await compileAll();if(!id||!R.ok)return}status.textContent='Executando...';let q=await fetch('/api/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id})});let x=await q.json();if(x.ok){R.run=(x.stdout||'')+(x.stderr||'');out.textContent=R.run;status.textContent='✓ Execução concluída (código '+x.returncode+').';status.className='status ok'}else{out.textContent=x.error||'Falha ao executar';status.textContent='Falha: '+(x.error||'erro desconhecido');status.className='status bad'}}
+</script></body></html>

@@ -1,0 +1,131 @@
+# Teste 5 - Sistema de Recomendacao para e-commerce com Rede Neural
+# Estrutura do exemplo do professor:
+# Produto, Categoria, Usuario, RedeNeural e Recomendador.
+# Entrada: historico binario de 16 produtos.
+# Camada oculta: 10 neuronios com ReLU.
+# Camada de saida: 16 neuronios, um para cada produto, com sigmoide.
+
+class Produto {
+    number id = 0;
+    func codigo() { return this.id; }
+}
+
+class Categoria {
+    number quantidadeProdutos = 4;
+    func tamanho() { return this.quantidadeProdutos; }
+}
+
+class Usuario {
+    # 1 = comprado; 0 = nao comprado
+    # Smartphone, Laptop, Tablet, Fones de ouvido,
+    # Camisa, Jeans, Jaqueta, Sapatos,
+    # Geladeira, Micro-ondas, Maquina de lavar, Ar condicionado,
+    # Ficcao, Nao-ficcao, Ficcao cientifica, Fantasia
+    list historico = [1, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0];
+
+    func comprou(indice) {
+        return this.historico[indice];
+    }
+
+    func valorHistorico(indice) {
+        return this.historico[indice];
+    }
+}
+
+class RedeNeural {
+    # Vetor de entrada com 16 produtos.
+    list entrada = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    # Dez neuronios da camada oculta.
+    list camadaOculta = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    # Dezesseis neuronios de saida: um para cada produto.
+    list camadaSaida = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+
+    # No exemplo fornecido, W1, b1, W2 e b2 sao inicializados com 0.5.
+    number pesoW1 = 0.5;
+    number biasB1 = 0.5;
+    number pesoW2 = 0.5;
+    number biasB2 = 0.5;
+
+    func relu(x) {
+        if (x > 0) { return x; }
+        return 0;
+    }
+
+    func sigmoid(x) {
+        return 1 / (1 + exp(-x));
+    }
+
+    func definirEntrada(indice, valor) {
+        this.entrada[indice] = valor;
+        return valor;
+    }
+
+    func forward() {
+        int i = 0;
+        int j = 0;
+
+        # Z1 = X * W1 + b1; A1 = ReLU(Z1).
+        for (i = 0; i < 10; i = i + 1) {
+            number z1 = this.biasB1;
+            for (j = 0; j < 16; j = j + 1) {
+                z1 = z1 + this.entrada[j] * this.pesoW1;
+            }
+            this.camadaOculta[i] = this.relu(z1);
+        }
+
+        # Z2 = A1 * W2 + b2; A2 = sigmoid(Z2).
+        # Cada indice da camadaSaida corresponde a um produto diferente.
+        for (i = 0; i < 16; i = i + 1) {
+            number z2 = this.biasB2;
+            for (j = 0; j < 10; j = j + 1) {
+                z2 = z2 + this.camadaOculta[j] * this.pesoW2;
+            }
+            this.camadaSaida[i] = this.sigmoid(z2);
+        }
+        return 1;
+    }
+
+    func probabilidade(indice) {
+        return this.camadaSaida[indice];
+    }
+}
+
+class Recomendador {
+    var usuario = new Usuario();
+    var rede = new RedeNeural();
+
+    func recomendar() {
+        int i = 0;
+
+        # Codifica o historico do usuario diretamente nos 16 neuronios de entrada.
+        for (i = 0; i < 16; i = i + 1) {
+            this.rede.definirEntrada(i, this.usuario.valorHistorico(i));
+        }
+
+        this.rede.forward();
+        print("Produtos recomendados para voce:");
+
+        # Cada decisao consulta a probabilidade do neuronio de saida correspondente.
+        if (this.rede.probabilidade(1) > 0.5 && this.usuario.comprou(1) == 0) { print("Laptop"); }
+        if (this.rede.probabilidade(2) > 0.5 && this.usuario.comprou(2) == 0) { print("Tablet"); }
+        if (this.rede.probabilidade(3) > 0.5 && this.usuario.comprou(3) == 0) { print("Fones de ouvido"); }
+        if (this.rede.probabilidade(4) > 0.5 && this.usuario.comprou(4) == 0) { print("Camisa"); }
+        if (this.rede.probabilidade(6) > 0.5 && this.usuario.comprou(6) == 0) { print("Jaqueta"); }
+        if (this.rede.probabilidade(7) > 0.5 && this.usuario.comprou(7) == 0) { print("Sapatos"); }
+        if (this.rede.probabilidade(8) > 0.5 && this.usuario.comprou(8) == 0) { print("Geladeira"); }
+        if (this.rede.probabilidade(10) > 0.5 && this.usuario.comprou(10) == 0) { print("Maquina de lavar"); }
+        if (this.rede.probabilidade(11) > 0.5 && this.usuario.comprou(11) == 0) { print("Ar condicionado"); }
+        if (this.rede.probabilidade(13) > 0.5 && this.usuario.comprou(13) == 0) { print("Nao-ficcao"); }
+        if (this.rede.probabilidade(14) > 0.5 && this.usuario.comprou(14) == 0) { print("Ficcao cientifica"); }
+        if (this.rede.probabilidade(15) > 0.5 && this.usuario.comprou(15) == 0) { print("Fantasia"); }
+
+        return 1;
+    }
+}
+
+seq {
+    var produto = new Produto();
+    var categoria = new Categoria();
+    var recomendador = new Recomendador();
+    recomendador.recomendar();
+}

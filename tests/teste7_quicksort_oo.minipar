@@ -1,0 +1,59 @@
+# Teste 7 - Quicksort iterativo (nao recursivo)
+# Usa somente funcoes da linguagem MiniPar e uma pilha manual.
+
+func quicksort_iterativo() {
+    list arr = [33, 12, 98, 5, 61];
+    list stackInicio = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    list stackFim = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+
+    int sp = 0;
+    stackInicio[sp] = 0;
+    stackFim[sp] = len(arr) - 1;
+    sp = sp + 1;
+
+    while (sp > 0) {
+        sp = sp - 1;
+        int inicio = stackInicio[sp];
+        int fim = stackFim[sp];
+
+        if (inicio < fim) {
+            number pivot = arr[fim];
+            int i = inicio - 1;
+            int j = inicio;
+            number temp = 0;
+
+            for (j = inicio; j < fim; j = j + 1) {
+                if (arr[j] <= pivot) {
+                    i = i + 1;
+                    temp = arr[i];
+                    arr[i] = arr[j];
+                    arr[j] = temp;
+                }
+            }
+
+            i = i + 1;
+            temp = arr[i];
+            arr[i] = arr[fim];
+            arr[fim] = temp;
+
+            if (inicio < i - 1) {
+                stackInicio[sp] = inicio;
+                stackFim[sp] = i - 1;
+                sp = sp + 1;
+            }
+
+            if (i + 1 < fim) {
+                stackInicio[sp] = i + 1;
+                stackFim[sp] = fim;
+                sp = sp + 1;
+            }
+        }
+    }
+
+    print("Array ordenado: ", format_list(arr));
+    return 0;
+}
+
+seq {
+    quicksort_iterativo();
+}

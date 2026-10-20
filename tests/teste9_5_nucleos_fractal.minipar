@@ -1,0 +1,60 @@
+# Teste 9 - 160 avaliacoes + Mandelbrot: sequencial x paralelo em 5 nucleos.
+# Nucleos 1 a 4: Professor + 3 monitores. Nucleo 5: fractal ASCII.
+
+func avaliar_lote(inicio, fim) {
+    int i = 0;
+    number acumulador = 0;
+    for (i = inicio; i < fim; i = i + 1) {
+        acumulador = acumulador + cpu_work(i + 1);
+    }
+    return acumulador;
+}
+
+seq {
+    print("Carga de Trabalho: 160 atividades + 1 Calculo de Fractal ASCII");
+    print("");
+
+    # Modo sequencial: um unico fluxo executa as 160 avaliacoes e o fractal.
+    print("--- 1. Executando Modo Sequencial (Apenas 1 Nucleo) ---");
+    number inicio_seq = now_seconds();
+    number resultado_seq = avaliar_lote(0, 160);
+    string fractal_seq = mandelbrot_ascii();
+    number fim_seq = now_seconds();
+    number tempo_seq = fim_seq - inicio_seq;
+    print("Tempo Sequencial Concluido em: ", tempo_seq, " segundos");
+    print("");
+
+    # Modo paralelo: 4 avaliadores + 1 tarefa independente para o fractal.
+    print("--- 2. Executando Modo Paralelo (5 Nucleos Dedicados) ---");
+    number inicio_par = now_seconds();
+
+    fork professor on core(1) { avaliar_lote(0, 40); }
+    fork monitor1 on core(2) { avaliar_lote(40, 80); }
+    fork monitor2 on core(3) { avaliar_lote(80, 120); }
+    fork monitor3 on core(4) { avaliar_lote(120, 160); }
+    fork fractal on core(5) { mandelbrot_ascii(); }
+    join(professor, monitor1, monitor2, monitor3, fractal);
+
+    number fim_par = now_seconds();
+    number tempo_par = fim_par - inicio_par;
+    print("Tempo Paralelo Concluido em: ", tempo_par, " segundos");
+    print("");
+
+    # Visualizacao apos a execucao paralela (sem compartilhar estado entre threads).
+    string fractal_visual = mandelbrot_ascii();
+    print(fractal_visual);
+    print("");
+
+    number speedup = tempo_seq / tempo_par;
+    number reducao = ((tempo_seq - tempo_par) / tempo_seq) * 100;
+
+    print("==========================================");
+    print("         BENCHMARK DE DESEMPENHO");
+    print("==========================================");
+    print("Nucleos Utilizados (Paralelo) : 5");
+    print("Tempo Sequencial               : ", tempo_seq, " s");
+    print("Tempo Paralelo                 : ", tempo_par, " s");
+    print("Aceleracao (Speedup)           : ", speedup, "x mais rapido!");
+    print("Reducao de Tempo               : ", reducao, "%");
+    print("==========================================");
+}

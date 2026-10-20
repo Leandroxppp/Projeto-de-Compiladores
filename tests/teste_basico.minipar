@@ -1,0 +1,6 @@
+seq {
+    int x = 5;
+    int y = 7;
+    if (x < y) { print("x menor que y"); }
+    par { print("thread A"); print("thread B"); }
+}

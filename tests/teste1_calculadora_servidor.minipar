@@ -1,0 +1,40 @@
+# Teste 1B - servidor da calculadora via c_channel
+# Recebe a requisicao, separa os campos da mensagem e calcula no proprio MiniPar.
+seq {
+    var calculadora = c_channel("0.0.0.0", 5055);
+    print("Servidor iniciado na porta 5055 - aguardando cliente...");
+
+    string mensagem = receive(calculadora);
+    print("Servidor recebeu: ", mensagem);
+
+    number operacao = to_number(field(mensagem, 0));
+    number valor1 = to_number(field(mensagem, 1));
+    number valor2 = to_number(field(mensagem, 2));
+    number resultado = 0;
+
+    if (operacao == 1) {
+        resultado = valor1 + valor2;
+    } else {
+        if (operacao == 2) {
+            resultado = valor1 - valor2;
+        } else {
+            if (operacao == 3) {
+                resultado = valor1 * valor2;
+            } else {
+                if (operacao == 4) {
+                    if (valor2 != 0) {
+                        resultado = valor1 / valor2;
+                    } else {
+                        print("Erro: divisao por zero");
+                    }
+                } else {
+                    print("Erro: operacao invalida");
+                }
+            }
+        }
+    }
+
+    print("Resultado calculado: ", resultado);
+    send(calculadora, resultado);
+    print("Resultado enviado ao cliente");
+}
