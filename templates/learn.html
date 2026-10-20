@@ -26,7 +26,33 @@
         </div>
         <small id="testHint">Selecione um teste para carregar seu código no editor.</small>
       </div>
+
       <textarea id="code" class="editor">{{example}}</textarea>
+
+      <div class="io-box">
+        <label for="stdinInput"><strong>Entrada padrão (stdin)</strong></label>
+        <textarea id="stdinInput" class="stdin-editor" placeholder="Para programas interativos, digite aqui exatamente o que seria informado no teclado, uma entrada por linha."></textarea>
+        <small>Ex.: o Teste 6 pode receber <code>33 5 98 12 61</code>. Este conteúdo é enviado ao executável ao clicar em Executar.</small>
+      </div>
+
+      <div id="calcBox" class="io-box calc-box" style="display:none">
+        <strong>Teste 1 — execução cliente/servidor em localhost</strong>
+        <small>Este modo inicia o servidor e o cliente automaticamente, usando sockets TCP reais na porta 5055.</small>
+        <div class="calc-grid">
+          <label>Operação
+            <select id="calcOperation" class="select">
+              <option value="1">1 — Soma</option>
+              <option value="2">2 — Subtração</option>
+              <option value="3">3 — Multiplicação</option>
+              <option value="4">4 — Divisão</option>
+            </select>
+          </label>
+          <label>Valor 1<input id="calcValue1" class="text-input" type="number" step="any" value="10"></label>
+          <label>Valor 2<input id="calcValue2" class="text-input" type="number" step="any" value="5"></label>
+        </div>
+        <button class="btn ok" onclick="runCalculatorTest()">Executar cliente + servidor</button>
+      </div>
+
       <div class="toolbar">
         <button class="btn" onclick="phase('tokens')">Tokens · Lexer</button>
         <button class="btn" onclick="phase('ast')">AST · Sintática</button>
@@ -38,6 +64,7 @@
         <a id="download" class="btn" style="display:none">Baixar executável</a>
       </div>
     </section>
+
     <section class="panel">
       <h2 id="title">2. Visualização didática</h2>
       <div class="legend"><span>Lexer → tokens</span><span>Parser → AST</span><span>Semântico → validações</span><span>TAC → intermediário</span></div>
@@ -48,11 +75,22 @@
 </main>
 <script>
 let R={}, id='', loadedTest='';
-const code=document.getElementById('code'), title=document.getElementById('title'), view=document.getElementById('view'), status=document.getElementById('status'), download=document.getElementById('download'), testSelect=document.getElementById('testSelect'), testHint=document.getElementById('testHint');
+const code=document.getElementById('code'), title=document.getElementById('title'), view=document.getElementById('view'), status=document.getElementById('status'), download=document.getElementById('download'), testSelect=document.getElementById('testSelect'), testHint=document.getElementById('testHint'), stdinInput=document.getElementById('stdinInput'), calcBox=document.getElementById('calcBox');
+
+function updateTestHelpers(){
+  const isCalc=loadedTest==='teste1_calculadora_cliente.minipar'||loadedTest==='teste1_calculadora_servidor.minipar';
+  calcBox.style.display=isCalc?'block':'none';
+  if(loadedTest==='teste6_ordenacao_lista.minipar'){
+    stdinInput.value='33 5 98 12 61\n';
+    testHint.textContent='Teste 6 carregado. A entrada de exemplo já foi preenchida em stdin e pode ser alterada.';
+  }else if(!isCalc){
+    stdinInput.value='';
+  }
+}
 
 async function loadSelectedTest(){
   const file=testSelect.value;
-  if(!file){loadedTest='';testHint.textContent='Modo de edição manual.';return}
+  if(!file){loadedTest='';testHint.textContent='Modo de edição manual.';calcBox.style.display='none';return}
   status.textContent='Carregando teste...';
   const q=await fetch('/api/tests/'+encodeURIComponent(file));
   const x=await q.json();
@@ -60,6 +98,7 @@ async function loadSelectedTest(){
   code.value=x.code; loadedTest=x.file; id=''; R={}; download.style.display='none';
   title.textContent=x.label; view.className='output'; view.textContent='Teste carregado. Escolha uma fase ou clique em Compilar.';
   testHint.textContent='Carregado: '+x.label;
+  updateTestHelpers();
   status.textContent='✓ Teste carregado no editor.'; status.className='status ok';
 }
 testSelect.addEventListener('change',loadSelectedTest);
@@ -69,6 +108,21 @@ function esc(x){return String(x).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>
 function tree(n){if(n===null||n===undefined)return'';if(Array.isArray(n))return n.map(tree).join('');if(typeof n!=='object')return `<li><span class=node>${esc(n)}</span></li>`;let label=n.node||'obj';let kids=[];for(const [k,v] of Object.entries(n)){if(k==='node'||k==='line'||v===null||v===undefined)continue;if(typeof v==='object')kids.push(`<li><span class=node><strong>${esc(k)}</strong></span>${Array.isArray(v)?`<ul>${v.map(tree).join('')}</ul>`:`<ul>${tree(v)}</ul>`}</li>`)}let atoms=Object.entries(n).filter(([k,v])=>k!=='node'&&k!=='line'&&typeof v!=='object').map(([k,v])=>`${k}=${v}`).join('<br>');return `<li><span class=node><strong>${esc(label)}</strong>${atoms?'<br>'+atoms:''}</span>${kids.length?'<ul>'+kids.join('')+'</ul>':''}</li>`}
 async function phase(k){try{await analyze();if(k==='tokens'){title.textContent='Tokens · resultado do Lexer';view.className='output';view.textContent=(R.tokens||[]).map(t=>`${t.line}:${t.col}\t${t.type.padEnd(12)}\t${JSON.stringify(t.lexeme)}`).join('\n')}if(k==='ast'){title.textContent='AST · Árvore Sintática Abstrata';view.className='ast-wrap tree';view.innerHTML='<ul>'+tree(R.ast)+'</ul>'}if(k==='sem'){title.textContent='Análise Semântica';view.className='output';view.textContent=(R.semantic_errors||[]).join('\n')||'✓ Programa semanticamente válido.'}if(k==='tac'){title.textContent='TAC · Código de três endereços';view.className='output';view.textContent=R.tac}if(k==='cpp'){title.textContent='Código C++ gerado';view.className='output';view.textContent=R.cpp}}catch(e){status.textContent=e.message;status.className='status bad'}}
 async function compileAll(){status.textContent='Compilando...';status.className='status';let q=await fetch('/api/compile',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code:code.value})});R=await q.json();id=R.id||'';status.textContent=R.ok?'✓ Pipeline concluída e executável gerado.':'Falha: '+(R.error||(R.semantic_errors||[]).join('; '));status.className='status '+(R.ok?'ok':'bad');if(R.download){download.href=R.download;download.style.display='inline-block'};title.textContent='Compilação';view.className='output';view.textContent=(R.build&&R.build.stderr)||R.cpp||R.error||''}
-async function runBin(){if(!id){await compileAll();if(!id||!R.ok)return}status.textContent='Executando...';status.className='status';let q=await fetch('/api/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id})});let x=await q.json();title.textContent='Execução do programa';view.className='output';if(x.ok){view.textContent=(x.stdout||'')+(x.stderr||'');status.textContent='✓ Execução concluída (código '+x.returncode+').';status.className='status ok'}else{view.textContent=x.error||'Falha ao executar';status.textContent='Falha: '+(x.error||'erro desconhecido');status.className='status bad'}}
+async function runBin(){if(!id){await compileAll();if(!id||!R.ok)return}status.textContent='Executando...';status.className='status';let q=await fetch('/api/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,stdin:stdinInput.value})});let x=await q.json();title.textContent='Execução do programa';view.className='output';if(x.ok){view.textContent=(x.stdout||'')+(x.stderr||'');status.textContent='✓ Execução concluída (código '+x.returncode+').';status.className='status ok'}else{view.textContent=x.error||'Falha ao executar';status.textContent='Falha: '+(x.error||'erro desconhecido');status.className='status bad'}}
+
+async function runCalculatorTest(){
+  status.textContent='Iniciando servidor e cliente em localhost...';status.className='status';
+  title.textContent='Teste 1 · Cliente/Servidor';view.className='output';view.textContent='Aguardando comunicação TCP...';
+  const payload={operation:Number(document.getElementById('calcOperation').value),value1:Number(document.getElementById('calcValue1').value),value2:Number(document.getElementById('calcValue2').value)};
+  const q=await fetch('/api/run-test1',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+  const x=await q.json();
+  if(x.ok){
+    view.textContent='=== SERVIDOR ===\n'+(x.server_stdout||'')+(x.server_stderr||'')+'\n=== CLIENTE ===\n'+(x.client_stdout||'')+(x.client_stderr||'');
+    status.textContent='✓ Teste 1 concluído: cliente e servidor comunicaram via TCP em localhost.';status.className='status ok';
+  }else{
+    view.textContent=(x.error||'Falha no Teste 1')+(x.details?'\n'+x.details:'');
+    status.textContent='Falha: '+(x.error||'erro desconhecido');status.className='status bad';
+  }
+}
 </script>
 </body></html>

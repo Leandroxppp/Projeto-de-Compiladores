@@ -14,6 +14,13 @@ def compile_source(source:str,out_base:str|None=None,build=True):
     if build and out_base and not errors: result['build']=compile_cpp(cpp,out_base)
     return result
 
-def execute(exe,timeout=15):
-    p=subprocess.run([exe],capture_output=True,text=True,timeout=timeout)
+def execute(exe,timeout=15,stdin_text=None):
+    """Executa um binário compilado, opcionalmente fornecendo sua entrada padrão."""
+    p=subprocess.run(
+        [exe],
+        input=stdin_text,
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+    )
     return {'returncode':p.returncode,'stdout':p.stdout,'stderr':p.stderr}

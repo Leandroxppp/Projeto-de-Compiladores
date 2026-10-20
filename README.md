@@ -83,6 +83,10 @@ Abra:
 
 A interface didática possui botões independentes para **Tokens**, **AST**, **Análise Semântica**, **TAC**, **C++**, **Compilar**, **baixar executável** e **Executar**.
 
+As duas interfaces Web também aceitam **entrada padrão (`stdin`)**. Isso permite executar diretamente programas interativos, como o Teste 6. Ao carregar o Teste 6, uma entrada de exemplo é preenchida automaticamente e pode ser alterada antes da execução.
+
+Para o **Teste 1**, ao carregar o cliente ou o servidor aparece um painel especial **Executar cliente + servidor**. Esse modo compila os dois programas, inicia o servidor e executa o cliente em `127.0.0.1`, mantendo a comunicação real por sockets TCP na porta `5055`. A execução em dois computadores continua disponível pelo terminal, informando no cliente o IPv4 da máquina servidora.
+
 ## Nova sintaxe Fork/Join
 
 ```minipar

@@ -20,17 +20,33 @@
     <small id="testHint">Selecione um teste para carregar o arquivo .minipar.</small>
   </div>
   <textarea id="code" class="editor">{{example}}</textarea>
+  <div class="io-box">
+    <label for="stdinInput"><strong>Entrada padrão (stdin)</strong></label>
+    <textarea id="stdinInput" class="stdin-editor" placeholder="Entradas do programa, uma por linha."></textarea>
+    <small>Use este campo para programas interativos. O Teste 6 recebe automaticamente uma entrada de exemplo.</small>
+  </div>
+  <div id="calcBox" class="io-box calc-box" style="display:none">
+    <strong>Teste 1 — cliente/servidor em localhost</strong>
+    <div class="calc-grid">
+      <label>Operação<select id="calcOperation" class="select"><option value="1">1 — Soma</option><option value="2">2 — Subtração</option><option value="3">3 — Multiplicação</option><option value="4">4 — Divisão</option></select></label>
+      <label>Valor 1<input id="calcValue1" class="text-input" type="number" step="any" value="10"></label>
+      <label>Valor 2<input id="calcValue2" class="text-input" type="number" step="any" value="5"></label>
+    </div>
+    <button class="btn ok" onclick="runCalculatorTest()">Executar cliente + servidor</button>
+  </div>
   <div class="toolbar"><button class="btn primary" onclick="compileAll()">Compilar</button><button class="btn" onclick="runBin()">Executar</button><a id="download" class="btn" style="display:none">Baixar executável</a></div>
 </section>
 <section class="panel"><div class="tabs"><button class="tab active" onclick="show('tokens',this)">Tokens</button><button class="tab" onclick="show('ast',this)">AST JSON</button><button class="tab" onclick="show('sem',this)">Semântico</button><button class="tab" onclick="show('tac',this)">TAC</button><button class="tab" onclick="show('cpp',this)">C++</button><button class="tab" onclick="show('run',this)">Saída</button></div><pre id="out" class="output">Compile para visualizar a pipeline.</pre><div id="status" class="status">Pronto.</div></section>
 </div></main>
 <script>
-let R={},id='';
-const code=document.getElementById('code'), out=document.getElementById('out'), status=document.getElementById('status'), download=document.getElementById('download'), testSelect=document.getElementById('testSelect'), testHint=document.getElementById('testHint');
-async function loadSelectedTest(){const file=testSelect.value;if(!file){testHint.textContent='Modo de edição manual.';return}const q=await fetch('/api/tests/'+encodeURIComponent(file));const x=await q.json();if(!x.ok){status.textContent='Falha: '+x.error;status.className='status bad';return}code.value=x.code;id='';R={};download.style.display='none';out.textContent='Teste carregado: '+x.label+'\nClique em Compilar.';testHint.textContent='Carregado: '+x.label;status.textContent='✓ Teste carregado.';status.className='status ok'}
+let R={},id='',loadedTest='';
+const code=document.getElementById('code'), out=document.getElementById('out'), status=document.getElementById('status'), download=document.getElementById('download'), testSelect=document.getElementById('testSelect'), testHint=document.getElementById('testHint'), stdinInput=document.getElementById('stdinInput'), calcBox=document.getElementById('calcBox');
+function updateTestHelpers(){const isCalc=loadedTest==='teste1_calculadora_cliente.minipar'||loadedTest==='teste1_calculadora_servidor.minipar';calcBox.style.display=isCalc?'block':'none';if(loadedTest==='teste6_ordenacao_lista.minipar'){stdinInput.value='33 5 98 12 61\n';testHint.textContent='Teste 6 carregado. stdin de exemplo preenchido automaticamente.'}else if(!isCalc){stdinInput.value=''}}
+async function loadSelectedTest(){const file=testSelect.value;if(!file){loadedTest='';testHint.textContent='Modo de edição manual.';calcBox.style.display='none';return}const q=await fetch('/api/tests/'+encodeURIComponent(file));const x=await q.json();if(!x.ok){status.textContent='Falha: '+x.error;status.className='status bad';return}code.value=x.code;loadedTest=x.file;id='';R={};download.style.display='none';out.textContent='Teste carregado: '+x.label+'\nClique em Compilar.';testHint.textContent='Carregado: '+x.label;updateTestHelpers();status.textContent='✓ Teste carregado.';status.className='status ok'}
 testSelect.addEventListener('change',loadSelectedTest);
 function text(k){if(k==='tokens')return JSON.stringify(R.tokens||[],null,2);if(k==='ast')return JSON.stringify(R.ast||{},null,2);if(k==='sem')return (R.semantic_errors||[]).join('\n')||'✓ Nenhum erro semântico';if(k==='tac')return R.tac||'';if(k==='cpp')return R.cpp||'';if(k==='run')return R.run||'';return''}
 function show(k,b){document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));b.classList.add('active');out.textContent=text(k)}
 async function compileAll(){status.textContent='Compilando...';status.className='status';let q=await fetch('/api/compile',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code:code.value})});R=await q.json();id=R.id||'';out.textContent=R.cpp||R.error||'';status.textContent=R.ok?'✓ Compilação concluída':'Falha: '+(R.error||(R.semantic_errors||[]).join('; '));status.className='status '+(R.ok?'ok':'bad');if(R.download){download.href=R.download;download.style.display='inline-block'}}
-async function runBin(){if(!id){await compileAll();if(!id||!R.ok)return}status.textContent='Executando...';let q=await fetch('/api/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id})});let x=await q.json();if(x.ok){R.run=(x.stdout||'')+(x.stderr||'');out.textContent=R.run;status.textContent='✓ Execução concluída (código '+x.returncode+').';status.className='status ok'}else{out.textContent=x.error||'Falha ao executar';status.textContent='Falha: '+(x.error||'erro desconhecido');status.className='status bad'}}
+async function runBin(){if(!id){await compileAll();if(!id||!R.ok)return}status.textContent='Executando...';let q=await fetch('/api/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id,stdin:stdinInput.value})});let x=await q.json();if(x.ok){R.run=(x.stdout||'')+(x.stderr||'');out.textContent=R.run;status.textContent='✓ Execução concluída (código '+x.returncode+').';status.className='status ok'}else{out.textContent=x.error||'Falha ao executar';status.textContent='Falha: '+(x.error||'erro desconhecido');status.className='status bad'}}
+async function runCalculatorTest(){status.textContent='Iniciando servidor e cliente em localhost...';status.className='status';out.textContent='Aguardando comunicação TCP...';const payload={operation:Number(document.getElementById('calcOperation').value),value1:Number(document.getElementById('calcValue1').value),value2:Number(document.getElementById('calcValue2').value)};const q=await fetch('/api/run-test1',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});const x=await q.json();if(x.ok){R.run='=== SERVIDOR ===\n'+(x.server_stdout||'')+(x.server_stderr||'')+'\n=== CLIENTE ===\n'+(x.client_stdout||'')+(x.client_stderr||'');out.textContent=R.run;status.textContent='✓ Teste 1 concluído via TCP localhost.';status.className='status ok'}else{out.textContent=(x.error||'Falha no Teste 1')+(x.details?'\n'+x.details:'');status.textContent='Falha: '+(x.error||'erro desconhecido');status.className='status bad'}}
 </script></body></html>
