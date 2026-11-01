@@ -6,7 +6,7 @@ def test_basico_pipeline():
     assert not r['semantic_errors']
     assert any(t['type']=='SEQ' for t in r['tokens'])
     assert 'PRINT' in r['tac']
-    assert 'int main()' in r['cpp']
+    assert 'int main(' in r['cpp']
 
 def test_fork_join_ast():
     src='seq { fork a on core(1) { print("A"); } fork b on core(2) { print("B"); } join(a,b); }'

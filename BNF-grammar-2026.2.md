@@ -52,8 +52,10 @@ Esta versão mantém a base sintática da MiniPar 2026.1 e documenta as extensõ
 
 <fork> ::= ("fork" | "Fork") <ID> "on" <alvo_fork> <bloco> [ ";" ]
 <alvo_fork> ::= "core" "(" <expressao> ")"
-              | "computer" "(" <expressao> ")"
+              | "computer" "(" <expressao> ")"     # expressao: texto "IP" ou "IP:porta"
 
+# Restricao (semantica): em "fork t on computer(...)", <bloco> contem exatamente uma chamada de funcao.
+# Leitura do retorno: resultado(t), uma chamada especial reconhecida apos o join de t.
 <join> ::= ("join" | "Join") "(" <ID> { "," <ID> } ")" ";"
          | ("join" | "Join") <ID> { "," <ID> } ";"
 
@@ -111,7 +113,13 @@ Esta versão mantém a base sintática da MiniPar 2026.1 e documenta as extensõ
 ## Semântica de Fork/Join
 
 - `fork tarefa on core(n) { ... }`: cria uma subtarefa concorrente e solicita associação ao núcleo indicado.
-- `fork tarefa on computer("IP") { ... }`: registra um alvo remoto lógico; a troca de dados entre computadores ocorre por `c_channel`/sockets.
+- `fork tarefa on computer("IP:porta") { funcao(arg1, arg2); }`: executa a chamada em **outro computador** (ou outro processo, ex.: `127.0.0.1`). A porta padrão é 6000. Regras do fork remoto:
+  - o corpo deve ser **uma única chamada** a uma função declarada no programa, com o número correto de argumentos;
+  - apenas **números** trafegam pela rede (argumentos e valor de retorno), pois as funções do MiniPar recebem e devolvem `number`;
+  - o computador remoto precisa estar com o **mesmo programa compilado** rodando em modo trabalhador: `./programa --worker [porta]`;
+  - o valor devolvido é lido **depois do `join`** com `resultado(tarefa)`; usá-lo antes do `join` ou em um fork `core(n)` é erro semântico;
+  - se o worker não estiver acessível, o programa informa o erro e termina com código 1.
+- `resultado(t)`: expressão que devolve o valor retornado pela função executada pelo fork remoto `t` (válida apenas após `join(t)`).
 - `join(t1, t2, ...)`: bloqueia a thread pai até que todas as subtarefas indicadas terminem.
 - A geração C++ usa `std::thread`; para `core(n)`, o runtime aplica afinidade de thread quando suportada pelo sistema operacional.
 - As subtarefas são geradas com captura por valor no C++ (`[=]() mutable`), evitando compartilhamento implícito por referência. Dados entre computadores devem ser trocados por mensagens via canais.

@@ -3,10 +3,15 @@ import json, os, subprocess, platform
 from .ast_nodes import *
 
 class CppCodeGenerator:
-    def __init__(self): self.ind=0; self.lines=[]; self.fork_names=set(); self.class_names=set()
+    def __init__(self):
+        self.ind=0; self.lines=[]; self.fork_names=set(); self.class_names=set()
+        self.remote_forks=set()   # tarefas 'fork ... on computer(...)' (devolvem valor)
+        self.func_names=set()     # funcoes de nivel superior (alvos possiveis de fork remoto)
     def w(self,s=''): self.lines.append('    '*self.ind+s)
     def generate(self,p:Program):
         self.class_names={s.name for s in p.statements if isinstance(s,ClassDecl)}
+        self.func_names={x.name for x in p.statements if isinstance(x,FuncDecl)}
+        self.remote_forks=set()
         self.lines=[]
         self.w('#include <iostream>'); self.w('#include <string>'); self.w('#include <vector>'); self.w('#include <thread>'); self.w('#include <mutex>'); self.w('#include <cmath>'); self.w('#include <chrono>'); self.w('#include <sstream>'); self.w('#include <algorithm>'); self.w('#include <memory>'); self.w('#include <map>'); self.w('#include <functional>'); self.w('#include <stdexcept>'); self.w('#ifdef _WIN32'); self.w('#include <winsock2.h>'); self.w('#include <ws2tcpip.h>'); self.w('#else'); self.w('#include <sys/types.h>'); self.w('#include <sys/socket.h>'); self.w('#include <arpa/inet.h>'); self.w('#include <netinet/in.h>'); self.w('#include <unistd.h>'); self.w('#include <pthread.h>'); self.w('#include <sched.h>'); self.w('#endif'); self.w('#ifdef interface'); self.w('#undef interface'); self.w('#endif'); self.w()
         self.w('std::mutex __minipar_print_mutex;')
@@ -63,12 +68,16 @@ class CppCodeGenerator:
         self.w("std::string field(const std::string& text, double index){ std::stringstream ss(text); std::string item; long long alvo=(long long)index; for(long long i=0;i<=alvo;++i){ if(!std::getline(ss,item,'|')) return std::string(); } return item; }")
         self.w('double to_number(const std::string& text){ return mp_number(text); }')
         self.w()
+        self.emit_remote_runtime()
         # classes/functions first
         for s in p.statements:
             if isinstance(s,ClassDecl): self.class_decl(s)
         for s in p.statements:
             if isinstance(s,FuncDecl): self.func_decl(s)
-        self.w('int main(){'); self.ind+=1
+        self.emit_worker(p)
+        self.w('int main(int argc, char** argv){'); self.ind+=1
+        # modo trabalhador: ./programa --worker [porta]  (porta padrao 6000)
+        self.w('if (argc >= 2 && std::string(argv[1]) == "--worker") return mp_worker(argc >= 3 ? std::atoi(argv[2]) : 6000);')
         for s in p.statements:
             if not isinstance(s,(ClassDecl,FuncDecl)): self.stmt(s)
         self.w('return 0;'); self.ind-=1; self.w('}')
@@ -136,11 +145,68 @@ class CppCodeGenerator:
             parts=' + std::string("|") + '.join(f'mp_to_string({self.expr(x)})' for x in n.payload) if n.payload else 'std::string()'
             self.w(f'mp_send({self.expr(n.channel)}, {parts});')
         elif isinstance(n,Fork):
-            self.fork_names.add(n.task_name); self.w(f'std::thread __fork_{n.task_name}([=]() mutable {{'); self.ind+=1; self.w(f'// alvo solicitado: {n.target_kind}({self.expr(n.target)})'); self.block_body(n.body); self.ind-=1; self.w('});')
-            if n.target_kind == 'core': self.w(f'mp_pin_thread(__fork_{n.task_name}, (int)({self.expr(n.target)}));')
+            if n.target_kind=='computer': self.fork_remote(n)
+            else:
+                self.fork_names.add(n.task_name); self.w(f'std::thread __fork_{n.task_name}([=]() mutable {{'); self.ind+=1; self.w(f'// alvo solicitado: {n.target_kind}({self.expr(n.target)})'); self.block_body(n.body); self.ind-=1; self.w('});')
+                self.w(f'mp_pin_thread(__fork_{n.task_name}, (int)({self.expr(n.target)}));')
         elif isinstance(n,Join):
-            for t in n.tasks:self.w(f'if (__fork_{t}.joinable()) __fork_{t}.join();')
+            for t in n.tasks:
+                self.w(f'if (__fork_{t}.joinable()) __fork_{t}.join();')
+                if t in self.remote_forks:
+                    # se a chamada remota falhou, avisa com clareza e encerra
+                    self.w(f'if (!__fork_error_{t}.empty()) {{ std::cerr << "Erro no fork remoto \'{t}\': " << __fork_error_{t} << std::endl; std::exit(1); }}')
         elif isinstance(n,(Call,Property,Identifier,Number,String,Bool,Binary,Unary,New,Receive,Input,ListLiteral,Index)): self.w(self.expr(n)+';')
+    def fork_remote(self,n):
+        """Gera o C++ de 'fork t on computer("IP:porta") { f(a, b); }'.
+
+        O pai avalia os argumentos AGORA e dispara uma thread que faz a chamada
+        pela rede. O valor devolvido fica em __fork_result_t, lido por resultado(t)
+        depois do join. Falhas ficam em __fork_error_t e sao tratadas no join.
+        """
+        stmts=n.body.statements
+        if not (len(stmts)==1 and isinstance(stmts[0],Call) and isinstance(stmts[0].callee,Identifier)):
+            # corpo invalido: o semantico ja reportou o erro; aqui so evitamos quebrar a geracao
+            self.w(f'// fork remoto "{n.task_name}" invalido (veja os erros semanticos)')
+            return
+        nome=n.task_name; call=stmts[0]
+        self.fork_names.add(nome); self.remote_forks.add(nome)
+        args=', '.join(f'(double)({self.expr(a)})' for a in call.args)
+        self.w(f'double __fork_result_{nome} = 0; std::string __fork_error_{nome};')
+        self.w(f'std::vector<double> __fork_args_{nome} = {{{args}}};')
+        self.w(f'std::string __fork_dest_{nome} = {self.expr(n.target)};')
+        self.w(f'std::thread __fork_{nome}([&__fork_result_{nome}, &__fork_error_{nome}, __fork_args_{nome}, __fork_dest_{nome}]() {{')
+        self.ind+=1
+        self.w(f'try {{ __fork_result_{nome} = mp_remote_call(__fork_dest_{nome}, "{call.callee.name}", __fork_args_{nome}); }}')
+        self.w(f'catch (const std::exception& e) {{ __fork_error_{nome} = e.what(); }}')
+        self.ind-=1; self.w('});')
+
+    def emit_remote_runtime(self):
+        """Runtime de rede do fork remoto (lado cliente + utilitarios).
+
+        Protocolo de texto, uma linha por mensagem:
+          pedido:   RUN <funcao> <n_args> <arg1> ... <argN>
+          resposta: OK <valor>   |   ERR <mensagem>
+        """
+        for line in REMOTE_RUNTIME.strip('\n').split('\n'): self.w(line)
+        self.w()
+
+    def emit_worker(self,p):
+        """Tabela de funcoes expostas + modo trabalhador (--worker).
+
+        Cada funcao de nivel superior do programa pode ser chamada por um fork
+        remoto. O trabalhador atende cada conexao em uma thread propria, entao
+        varios forks para o mesmo computador rodam em paralelo.
+        """
+        self.w('std::map<std::string, std::pair<int, std::function<double(const std::vector<double>&)>>> mp_funcoes_remotas = {')
+        self.ind+=1
+        for f in (x for x in p.statements if isinstance(x,FuncDecl)):
+            chamada=', '.join(f'a[{i}]' for i in range(len(f.params)))
+            param='a' if f.params else ''
+            self.w(f'{{"{f.name}", {{{len(f.params)}, [](const std::vector<double>& {param}) -> double {{ return {f.name}({chamada}); }}}}}},')
+        self.ind-=1; self.w('};')
+        for line in WORKER_RUNTIME.strip('\n').split('\n'): self.w(line)
+        self.w()
+
     def stmt_body(self,n):
         if isinstance(n,Block):self.block_body(n)
         else:self.stmt(n)
@@ -158,6 +224,8 @@ class CppCodeGenerator:
         if isinstance(n,Binary):return f'({self.expr(n.left)} {n.op} {self.expr(n.right)})'
         if isinstance(n,Unary):return f'({n.op}{self.expr(n.expr)})'
         if isinstance(n,Property):return f'{self.expr(n.obj)}.{n.name}'
+        if isinstance(n,Call) and isinstance(n.callee,Identifier) and n.callee.name=='resultado' and 'resultado' not in self.func_names and len(n.args)==1 and isinstance(n.args[0],Identifier):
+            return f'__fork_result_{n.args[0].name}'   # valor devolvido pelo fork remoto
         if isinstance(n,Call):return f'{self.expr(n.callee)}({", ".join(self.expr(x) for x in n.args)})'
         if isinstance(n,New):return f'{n.class_name}()'
         if isinstance(n,This):return '(*this)'
@@ -176,3 +244,100 @@ def compile_cpp(code:str,out_base:str):
     if platform.system()=='Windows': cmd.append('-lws2_32')
     p=subprocess.run(cmd,capture_output=True,text=True,timeout=30)
     return {'ok':p.returncode==0,'cpp':cpp,'exe':exe,'stdout':p.stdout,'stderr':p.stderr,'command':' '.join(cmd)}
+
+
+# C++ fixo do fork remoto. Mantido como texto para ficar legivel e comentado.
+REMOTE_RUNTIME = r'''
+#include <cstdlib>
+// ---- Fork remoto: utilitarios de socket ----
+static bool mp_send_all(mp_socket_t s, const std::string& data){
+    size_t off = 0;
+    while (off < data.size()) {
+        int n = (int)send(s, data.c_str() + off, (int)(data.size() - off), 0);
+        if (n <= 0) return false;
+        off += (size_t)n;
+    }
+    return true;
+}
+// Le ate o fim da linha. Devolve false se a conexao fechou sem nenhum dado.
+static bool mp_recv_line(mp_socket_t s, std::string& line){
+    line.clear(); char c;
+    while (true) {
+        int n = (int)recv(s, &c, 1, 0);
+        if (n <= 0) return !line.empty();
+        if (c == '\n') return true;
+        if (c != '\r') line += c;
+    }
+}
+// ---- Fork remoto: lado cliente (programa principal) ----
+// destino: "IP" ou "IP:porta" (porta padrao 6000). Lanca excecao em caso de falha.
+double mp_remote_call(const std::string& destino, const std::string& funcao, const std::vector<double>& args){
+    std::string host = destino; int porta = 6000;
+    size_t p = destino.rfind(':');
+    if (p != std::string::npos) { host = destino.substr(0, p); porta = std::atoi(destino.substr(p + 1).c_str()); }
+    mp_socket_t s = socket(AF_INET, SOCK_STREAM, 0);
+    if (s == MP_INVALID_SOCKET) throw std::runtime_error("nao foi possivel criar o socket");
+    sockaddr_in a{}; a.sin_family = AF_INET; a.sin_port = htons((unsigned short)porta);
+    if (inet_pton(AF_INET, host.c_str(), &a.sin_addr) <= 0) { MP_CLOSE(s); throw std::runtime_error("IP invalido: " + host); }
+    if (connect(s, (sockaddr*)&a, sizeof(a)) < 0) {
+        MP_CLOSE(s);
+        throw std::runtime_error("nao foi possivel conectar em " + host + ":" + std::to_string(porta) + " (o worker esta rodando? o firewall liberou a porta?)");
+    }
+    std::ostringstream req; req.precision(17);
+    req << "RUN " << funcao << " " << args.size();
+    for (double v : args) req << " " << v;
+    req << "\n";
+    std::string resp;
+    if (!mp_send_all(s, req.str()) || !mp_recv_line(s, resp)) { MP_CLOSE(s); throw std::runtime_error("conexao perdida durante a chamada remota"); }
+    MP_CLOSE(s);
+    if (resp.rfind("OK ", 0) == 0) return std::strtod(resp.c_str() + 3, nullptr);
+    if (resp.rfind("ERR ", 0) == 0) throw std::runtime_error("erro no worker: " + resp.substr(4));
+    throw std::runtime_error("resposta invalida do worker: " + resp);
+}
+'''
+
+WORKER_RUNTIME = r'''
+// ---- Fork remoto: lado trabalhador (executavel iniciado com --worker) ----
+void mp_worker_conexao(mp_socket_t cli){
+    std::string line;
+    if (mp_recv_line(cli, line)) {
+        std::istringstream in(line); std::string cmd, nome; int n = 0;
+        in >> cmd >> nome >> n;
+        std::vector<double> args; double v;
+        while (in >> v) args.push_back(v);
+        std::string resp;
+        auto it = mp_funcoes_remotas.find(nome);
+        if (cmd != "RUN") resp = "ERR comando desconhecido";
+        else if (it == mp_funcoes_remotas.end()) resp = "ERR funcao '" + nome + "' nao existe neste programa";
+        else if (n != it->second.first || (int)args.size() != it->second.first) resp = "ERR numero de argumentos invalido para '" + nome + "'";
+        else {
+            try {
+                std::ostringstream chamada; chamada << nome << "(";
+                for (size_t k = 0; k < args.size(); ++k) chamada << (k ? ", " : "") << args[k];
+                chamada << ")";
+                mp_print("[worker] executando ", chamada.str());
+                std::ostringstream o; o.precision(17); o << "OK " << it->second.second(args); resp = o.str();
+                mp_print("[worker] concluido ", chamada.str());
+            }
+            catch (const std::exception& e) { resp = std::string("ERR ") + e.what(); }
+        }
+        mp_send_all(cli, resp + "\n");
+    }
+    MP_CLOSE(cli);
+}
+int mp_worker(int porta){
+    mp_socket_t srv = socket(AF_INET, SOCK_STREAM, 0);
+    if (srv == MP_INVALID_SOCKET) { std::cerr << "worker: socket() falhou" << std::endl; return 1; }
+    int yes = 1; setsockopt(srv, SOL_SOCKET, SO_REUSEADDR, (const char*)&yes, sizeof(yes));
+    sockaddr_in a{}; a.sin_family = AF_INET; a.sin_port = htons((unsigned short)porta); a.sin_addr.s_addr = INADDR_ANY;
+    if (bind(srv, (sockaddr*)&a, sizeof(a)) < 0) { std::cerr << "worker: nao foi possivel usar a porta " << porta << " (ja esta em uso?)" << std::endl; return 1; }
+    listen(srv, 16);
+    mp_print("[worker] aguardando tarefas na porta ", porta, " (Ctrl+C para encerrar)");
+    while (true) {
+        mp_socket_t cli = accept(srv, nullptr, nullptr);
+        if (cli == MP_INVALID_SOCKET) continue;
+        std::thread(mp_worker_conexao, cli).detach();   // uma thread por pedido: forks simultaneos rodam em paralelo
+    }
+    return 0;
+}
+'''
