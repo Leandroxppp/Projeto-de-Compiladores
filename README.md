@@ -105,6 +105,30 @@ seq {
 
 A geração de C++ transforma cada `fork` em `std::thread` e cada `join` em `thread.join()`.
 
+## Fork remoto (`computer`) — execução em outro computador
+
+Além de `core(n)`, o fork pode enviar uma chamada de função para **outro computador**:
+
+```minipar
+fork remoto1 on computer("192.168.0.10:6000") { avaliar_lote(40, 80); }
+join(remoto1);
+number r = resultado(remoto1);     # valor devolvido pelo outro computador
+```
+
+**Como funciona.** O mesmo programa compilado roda nas duas máquinas. Uma delas (o *worker*) é iniciada com `--worker` e fica esperando pedidos; a outra é o programa principal. O principal envia só o **nome da função e os argumentos** (números) por TCP e recebe o valor de volta. Cada pedido roda numa thread do worker, então vários forks para a mesma máquina executam em paralelo.
+
+**Como rodar o exemplo (`tests/teste11_fork_remoto.minipar`)**
+
+```bash
+python main.py tests/teste11_fork_remoto.minipar
+./output/teste11_fork_remoto --worker 6000    # terminal A (ou outro computador)
+./output/teste11_fork_remoto                  # terminal B
+```
+
+Para dois computadores: copie/compile o executável nos dois, rode `--worker` no segundo, troque `127.0.0.1` pelo IP dele no `.minipar` e **libere a porta no firewall**.
+
+**Limites (decisões de projeto).** O corpo do fork remoto é uma única chamada de função; só números trafegam; `resultado(t)` só vale depois do `join(t)`; sem worker acessível o programa informa o erro e sai com código 1. O compilador valida essas regras na análise semântica.
+
 ## Testes
 
 Testes unitários:

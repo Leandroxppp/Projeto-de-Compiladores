@@ -1,0 +1,39 @@
+# Teste 11 - Fork REMOTO (computer): lotes executados por um "worker" em outro processo/computador.
+#
+# Como rodar (dois terminais, mesmo computador):
+#   1) compile este programa (python main.py tests/teste11_fork_remoto.minipar)
+#   2) terminal A:  ./output/teste11_fork_remoto --worker 6000     (fica esperando tarefas)
+#   3) terminal B:  ./output/teste11_fork_remoto                    (programa principal)
+# Para usar DOIS computadores: rode o --worker no outro computador e troque
+# 127.0.0.1 pelo IPv4 dele nos dois forks remotos abaixo.
+
+func avaliar_lote(inicio, fim) {
+    int i = 0;
+    number acumulador = 0;
+    for (i = inicio; i < fim; i = i + 1) {
+        acumulador = acumulador + cpu_work(i + 1);
+    }
+    return acumulador;
+}
+
+seq {
+    print("--- Fork misto: 1 lote em nucleo local + 2 lotes no worker remoto ---");
+
+    fork local1 on core(1) { avaliar_lote(0, 40); }
+    fork remoto1 on computer("127.0.0.1:6000") { avaliar_lote(40, 80); }
+    fork remoto2 on computer("127.0.0.1:6000") { avaliar_lote(80, 120); }
+    join(local1, remoto1, remoto2);
+
+    # O valor devolvido pelo worker so fica disponivel DEPOIS do join.
+    number r1 = resultado(remoto1);
+    number r2 = resultado(remoto2);
+    print("Lote 40-80 (remoto)  : ", r1);
+    print("Lote 80-120 (remoto) : ", r2);
+
+    # Conferencia: calcula os mesmos lotes localmente e compara.
+    if (r1 == avaliar_lote(40, 80) && r2 == avaliar_lote(80, 120)) {
+        print("OK: resultados remotos identicos aos calculados localmente");
+    } else {
+        print("ERRO: resultados remotos diferentes do esperado");
+    }
+}
